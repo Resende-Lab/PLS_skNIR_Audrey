@@ -13,7 +13,7 @@ rm(list=ls())
 ####---- 1. Packages
 ###-----------------------------------
 
-library(dplyr)
+library(tidyverse)
 library(ggplot2)
 library(readr)
 library(tidyr)
@@ -49,7 +49,7 @@ RPD <- function(measured, RMSEP){
 #----------- 3.1 Observation
 # Obs.: After carefully analyzing the data, we found that every trait has one
 # number of components that better fit the data.
-# For the list of traits, one component will be choosed.
+# For the list of traits, one component will be selected.
 #
 
 
@@ -62,54 +62,62 @@ seg = 10
 
 
 #----------- 3.3 Specify the trait and ncomp below it
-# trait = "weight_mg"
-# ncomp = 11
 
+# (KW)
+trait = "weight_mg"
+ncomp = 11
+
+# # (ST - %)
 # trait = "starch_PCT"
-# ncomp = 8
-
-# trait = "starch_mg"
-# ncomp = 10
-
-# trait = "pericarp_Avg2"
-# ncomp = 12
-
-# trait = "pericarp_Avg3"
-# ncomp = 11
-
-# trait = "total_sugars_mg"
 # ncomp = 9
 
+# # (ST - mg)
+# trait = "starch_mg"
+# ncomp = 9
+
+# # (SUC)
+# trait = "sucrose_mg"
+# ncomp = 4
+
+# # (GC)
 # trait = "glucose_PCT"
 # ncomp = 8
 
-# trait = "sucrose_mg" 
-# ncomp = 4
+# # (PG)
+# trait = "PG_PCT"
+# ncomp = 8
 
-trait = "PG_PCT"
-ncomp = 8
+# # (TS)
+# trait = "total_sugars_mg"
+# ncomp = 9
+
+# # (TC)
+# trait = "total_carbohydrates_mg"
+# ncomp = 10
 
 
 n_seed=711
 
+
+
 #----------- 3.4 Dataset loading
+
 {
 
 
 # dataset
 if(trait=="weight_mg"){
   dataset = "w"
-} else if(trait %in% c("pericarp_Avg2","pericarp_Avg3")){
-  dataset = "p"
 } else if(trait =="PG_PCT"){
   dataset = "pg"
-} else if(trait %in% c("starch_PCT" ,"starch_mg", "total_sugars_mg","glucose_PCT","sucrose_mg")){
+} else if(trait %in% c("starch_PCT" ,"starch_mg", "total_sugars_mg","glucose_PCT","sucrose_mg", "total_carbohydrates_mg")){
   dataset = "s"
 }
 
+  
 #----------- 3.5 Spectra pre-treatment
 
-if(trait %in% c("starch_PCT","glucose_PCT", "phytoglycogen_PCT", "PG_PCT")){
+if(trait %in% c("starch_PCT","glucose_PCT", "PG_PCT")){
   spec = "snv"
 }else{
   spec= "raw"
@@ -127,18 +135,18 @@ cvth = 0.11   # default. !note! weight cv threshold is 0.10
 # sugars, starch
 if(dataset == "s"){
   dat <- read.csv("sugars_WL.NIR.csv")
-  if(cv_threshold == TRUE){
+  if(cv_threshold == TRUE & trait != "total_carbohydrates_mg"){
     dat <- dat %>%  filter(dat[,cv] < cvth)
   }
-  # pericarp
-}else if(dataset == "p"){
-  dat <- read.csv("Pericarp_WL.NIR.csv")
+  
   # weight
 }else if(dataset == "w"){
-  dat <- read.csv("weight and raw.avg.spec_ALL_3950k.csv") 
+  dat <- read.csv("weight_WL.NIR.csv") 
   d = dat[,grep("weight",colnames(dat))]
   d = cbind.data.frame(d, average = apply(d,1,mean),CV = apply(d,1,function(x) sd(x)/mean(x)))
-  dat = dat[-which(d$CV>0.1),]
+ 
+  
+  # Phytoglycogen
 }else if(dataset == "pg"){
   dat <- read.csv("PG_WL.NIR.csv") 
 }
@@ -159,7 +167,7 @@ sample <- data.frame(type = c("individual", "genotype"),
                      SD = c(round(sd(data[,trait]),2),round(sd(data[,trait]),2)),
                      Min = c(round(min(data[,trait]),2),round(min(data[,trait]),2)),
                      Max = c(round(max(data[,trait]),2),round(max(data[,trait]),2)))
-print(sample)
+#print(sample)
 
 ###-----------------------------------
 ####---- 4. Deploy the model
@@ -184,7 +192,7 @@ for(fold in 1:k_fold){
   if(spec == "raw"){ # raw NIR
     train.pls <- plsr(get(trait) ~ NIR, ncomp = 25, data = train, validation ="CV", segments = seg)
   } else if(spec == "snv"){ # SNV(NIR)
-    train.pls <- plsr(get(trait) ~ SNV(NIR), ncomp =25, data = train, validation ="CV", segments = seg)
+    train.pls <- plsr(get(trait) ~ SNV(NIR), ncomp = 25, data = train, validation ="CV", segments = seg)
   }
   
   # predict test data (outer-validation) with train.pls
@@ -205,11 +213,12 @@ rmse = sqrt(mean((X - Y)^2)) %>% round(2)
 rpd = RPD(X, rmse) %>% round(2)
 individual <- c(r, rmse, rpd)
 
-
 # grouped by genotype
 Res.geno <- Res %>% group_by(genotype) %>% 
-  summarise(across(.col =1:2, mean)) %>%
-  as.data.frame()
+            summarise(across(.col = 1:2, mean)) %>%
+            as.data.frame()
+
+
 X = Res.geno[,trait]
 Y = Res.geno[,"predicted"]
 
@@ -226,5 +235,6 @@ stats <- data.frame(type =c("individual", "genotype"),
                     RPD = c(rpd, rpd.g))
 cat(trait)
 print(stats)
+
 }
 
